@@ -532,3 +532,97 @@ procdump(void)
     cprintf("\n");
   }
 }
+
+
+int clone(void* stack, void(*func)(void*,void*), void *arg1, void *arg2)
+{
+  struct proc *new_proc,*curr_proc = myproc();
+  if((new_proc = allocproc()) == 0){
+    return -1;
+  }
+  void *arg1_stack, *arg2_stack, *fake_stack;
+
+
+  *new_proc->tf = *curr_proc->tf;
+  new_proc->sz = curr_proc->sz;
+  new_proc->parent = curr_proc;
+  new_proc->pgdir = curr_proc->pgdir;  
+
+  fake_stack = stack + PGSIZE - 3 * sizeof(void *);
+  arg1_stack = stack + PGSIZE - 2 * sizeof(void *);
+  arg2_stack = stack + PGSIZE - 1 * sizeof(void *);
+
+  *(uint*)fake_stack = 0xFFFFFFF;
+  *(uint*)arg1_stack = (uint)arg1;
+  *(uint*)arg2_stack = (uint)arg2;
+
+  new_proc->tf->esp = (uint) stack;
+
+  new_proc->thread_stack = stack;
+
+  new_proc->tf->esp += PGSIZE - 3 * sizeof(void*);
+  new_proc->tf->eax = 0;
+  new_proc->tf->eip = (uint) func;
+  new_proc->tf->ebp = new_proc->tf->esp;
+
+  for(int i = 0; i < NOFILE; i++)
+  {
+    if(curr_proc->ofile[i])
+    {
+      new_proc->ofile[i] = filedup(curr_proc->ofile[i]);
+    }
+  }
+  new_proc->cwd = idup(curr_proc->cwd);
+
+  safestrcpy(new_proc->name, curr_proc->name, sizeof(curr_proc->name));
+ 
+  acquire(&ptable.lock);
+
+  new_proc->state = RUNNABLE;
+
+  release(&ptable.lock);
+
+  return new_proc->pid;
+}
+
+int join(int proc_id)
+{
+  struct proc *curr_proc = myproc();
+  struct proc *check_proc;
+  int childProcess;
+  acquire(&ptable.lock);
+  for(;;){
+    childProcess = 0;
+    for(check_proc = ptable.proc; check_proc < &ptable.proc[NPROC]; check_proc++) {
+
+      if(check_proc->parent != curr_proc || check_proc->pgdir != check_proc->parent->pgdir)
+        continue;
+        
+      childProcess = 1;
+      if(check_proc->state == ZOMBIE){
+
+        kfree(check_proc->kstack);
+
+        check_proc->pid = 0;
+        check_proc->parent = 0;
+        check_proc->name[0] = 0;
+        check_proc->kstack = 0;
+        check_proc->killed = 0;
+        check_proc->thread_stack = 0;
+
+        check_proc->state = UNUSED;
+
+
+        release(&ptable.lock);
+
+        return 0;
+      }
+    }
+
+    if(!childProcess || curr_proc->killed){
+      release(&ptable.lock);
+      return -1;
+    }
+    sleep(curr_proc, &ptable.lock);  
+  }
+}
