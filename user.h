@@ -1,5 +1,10 @@
+#ifndef __USER__
+
 struct stat;
 struct rtcdate;
+typedef struct __lock_t{
+  uint flag;
+}lock_t;
 
 // system calls
 int fork(void);
@@ -23,6 +28,8 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int clone(void (*func)(void*,void*), void *, void *, void *);
+int join(void**);
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -37,3 +44,10 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+int th_create(void (*func)(void *,void*), void * arg1, void * arg2);
+int th_join(); 
+int lk_init(lock_t *lock);
+void lk_acquire(lock_t *lock);
+void lk_release(lock_t *lock);
+
+#endif

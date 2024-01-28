@@ -2,6 +2,7 @@
 #include "stat.h"
 #include "fcntl.h"
 #include "user.h"
+#include "mmu.h"
 #include "x86.h"
 
 char*
@@ -103,4 +104,33 @@ memmove(void *vdst, const void *vsrc, int n)
   while(n-- > 0)
     *dst++ = *src++;
   return vdst;
+}
+
+int th_create(void (*func)(void *, void *), void* arg1, void* arg2)
+{
+   void* thread_stack;
+  thread_stack = malloc(PGSIZE);
+
+  return clone(func, arg1, arg2,thread_stack );
+}
+
+int th_join()
+{
+  void * stack_pointer;
+  int res = join(&stack_pointer);
+  return res;
+}
+
+int lk_init(lock_t *lock)
+{
+  lock->flag = 0;
+  return 0;
+}
+
+void lk_acquire(lock_t *lock){
+  while(xchg(&lock->flag, 1) != 0);
+}
+
+void lk_release(lock_t *lock){
+	xchg(&lock->flag, 0);
 }
