@@ -533,96 +533,88 @@ procdump(void)
   }
 }
 
+int clone(void *stack, void (*function)(void *, void *), void *arg1, void *arg2) {
+  int i, pid;
+  struct proc *np;
+  struct proc *curproc = myproc();
 
-int clone(void* stack, void(*func)(void*,void*), void *arg1, void *arg2)
-{
-  struct proc *new_proc,*curr_proc = myproc();
-  if((new_proc = allocproc()) == 0){
+  if((np = allocproc()) == 0){
     return -1;
   }
-  void *arg1_stack, *arg2_stack, *fake_stack;
 
 
-  *new_proc->tf = *curr_proc->tf;
-  new_proc->sz = curr_proc->sz;
-  new_proc->parent = curr_proc;
-  new_proc->pgdir = curr_proc->pgdir;  
+  np->sz = curproc->sz;
+  np->pgdir = curproc->pgdir;
+  np->parent = curproc;
+  *np->tf = *curproc->tf;
 
-  fake_stack = stack + PGSIZE - 3 * sizeof(void *);
-  arg1_stack = stack + PGSIZE - 2 * sizeof(void *);
-  arg2_stack = stack + PGSIZE - 1 * sizeof(void *);
+  *(uint *)(stack + PGSIZE - 2 * sizeof(void *)) = (uint)arg1;
+  *(uint *)(stack + PGSIZE - 3 * sizeof(void *)) = (uint)arg2;
+  *(uint *)(stack + PGSIZE - 4 * sizeof(void *)) = 0xFFFFFFFF;
 
-  *(uint*)fake_stack = 0xFFFFFFF;
-  *(uint*)arg1_stack = (uint)arg1;
-  *(uint*)arg2_stack = (uint)arg2;
+  np->tf->esp = (uint)stack + PGSIZE - 4 * sizeof(void*);
+  np->tf->ebp = np->tf->esp;
+  np->tf->eip = (uint) function;
 
-  new_proc->tf->esp = (uint) stack;
+  np->thread_stack = stack;
 
-  new_proc->thread_stack = stack;
 
-  new_proc->tf->esp += PGSIZE - 3 * sizeof(void*);
-  new_proc->tf->eax = 0;
-  new_proc->tf->eip = (uint) func;
-  new_proc->tf->ebp = new_proc->tf->esp;
+  np->tf->eax = 0;
 
-  for(int i = 0; i < NOFILE; i++)
-  {
-    if(curr_proc->ofile[i])
-    {
-      new_proc->ofile[i] = filedup(curr_proc->ofile[i]);
-    }
-  }
-  new_proc->cwd = idup(curr_proc->cwd);
+  for(i = 0; i < NOFILE; i++)
+    if(curproc->ofile[i])
+      np->ofile[i] = filedup(curproc->ofile[i]);
+  np->cwd = idup(curproc->cwd);
 
-  safestrcpy(new_proc->name, curr_proc->name, sizeof(curr_proc->name));
- 
+  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+
+  pid = np->pid;
+
   acquire(&ptable.lock);
 
-  new_proc->state = RUNNABLE;
+  np->state = RUNNABLE;
 
   release(&ptable.lock);
 
-  return new_proc->pid;
+  return pid;
 }
 
-int join(int proc_id)
+int
+join(int tid, void** stack)
 {
-  struct proc *curr_proc = myproc();
-  struct proc *check_proc;
-  int childProcess;
+  struct proc *p;
+  int havekids, pid;
+  struct proc *curproc = myproc();
+  
   acquire(&ptable.lock);
   for(;;){
-    childProcess = 0;
-    for(check_proc = ptable.proc; check_proc < &ptable.proc[NPROC]; check_proc++) {
-
-      if(check_proc->parent != curr_proc || check_proc->pgdir != check_proc->parent->pgdir)
+    havekids = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->parent != curproc || p->pgdir != curproc->pgdir || p->pid != tid)
         continue;
+      havekids = 1;
+      if(p->state == ZOMBIE){
+        pid = p->pid;
+        kfree(p->kstack);
+        p->kstack = 0;
+        *stack = p->thread_stack;
+        p->thread_stack = 0;
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
         
-      childProcess = 1;
-      if(check_proc->state == ZOMBIE){
-
-        kfree(check_proc->kstack);
-
-        check_proc->pid = 0;
-        check_proc->parent = 0;
-        check_proc->name[0] = 0;
-        check_proc->kstack = 0;
-        check_proc->killed = 0;
-        check_proc->thread_stack = 0;
-
-        check_proc->state = UNUSED;
-
-
         release(&ptable.lock);
-
-        return 0;
+        return pid;
       }
     }
 
-    if(!childProcess || curr_proc->killed){
+    if(!havekids || curproc->killed){
       release(&ptable.lock);
       return -1;
     }
-    sleep(curr_proc, &ptable.lock);  
+
+    sleep(curproc, &ptable.lock); 
   }
 }

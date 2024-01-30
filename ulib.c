@@ -106,19 +106,25 @@ memmove(void *vdst, const void *vsrc, int n)
   return vdst;
 }
 
+
 int th_create(void (*func)(void *, void *), void* arg1, void* arg2)
 {
-   void* thread_stack;
-  thread_stack = malloc(PGSIZE);
+  void *stack = malloc(PGSIZE);
+  if (stack == 0)
+      return -1;
+  if ((uint)stack % PGSIZE != 0)
+      stack += PGSIZE - ((uint)stack % PGSIZE);
 
-  return clone(func, arg1, arg2,thread_stack );
+  return clone(stack, func, arg1, arg2 );
 }
 
-int th_join()
+int th_join(int tid)
 {
-  void * stack_pointer;
-  int res = join(&stack_pointer);
-  return res;
+  int retval;
+  void *stack;
+  retval = join(tid, &stack);
+  free(stack);
+  return retval;
 }
 
 int lk_init(lock_t *lock)
