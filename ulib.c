@@ -106,37 +106,31 @@ memmove(void *vdst, const void *vsrc, int n)
   return vdst;
 }
 
-
-int th_create(void (*func)(void *, void *), void* arg1, void* arg2)
+int th_create(void (*start_routine)(void *, void *), void* arg1, void* arg2)
 {
-  void *stack = malloc(PGSIZE);
-  if (stack == 0)
-      return -1;
-  if ((uint)stack % PGSIZE != 0)
-      stack += PGSIZE - ((uint)stack % PGSIZE);
+  void* stack;
+  stack = malloc(PGSIZE);
 
-  return clone(stack, func, arg1, arg2 );
+  return clone(start_routine, arg1, arg2, stack);
 }
 
-int th_join(int tid)
+int th_join()
 {
-  int retval;
-  void *stack;
-  retval = join(tid, &stack);
-  free(stack);
-  return retval;
+  void * stackPtr;
+  int x = join(&stackPtr);
+  return x;
 }
 
-int lk_init(lock_t *lock)
+int lk_init(lock_t *lk)
 {
-  lock->flag = 0;
+  lk->flag = 0;
   return 0;
 }
 
-void lk_acquire(lock_t *lock){
-  while(xchg(&lock->flag, 1) != 0);
+void lk_acquire(lock_t *lk){
+  while(xchg(&lk->flag, 1) != 0);
 }
 
-void lk_release(lock_t *lock){
-	xchg(&lock->flag, 0);
+void lk_release(lock_t *lk){
+	xchg(&lk->flag, 0);
 }

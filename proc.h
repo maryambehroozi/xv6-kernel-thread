@@ -1,3 +1,6 @@
+#define MAX_THREADS_SIZE 10
+
+
 // Per-CPU state
 struct cpu {
   uchar apicid;                // Local APIC ID
@@ -48,9 +51,12 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
-  char name[16];               // Process name (debugging)
+  char name[16];               // Process name (debugging)  
 
-  void *thread_stack;
+  void *threadstack;           
+  struct proc *thread_queue[MAX_THREADS_SIZE];
+  int thread_count;            
+  int next_thread;
 };
 
 // Process memory is laid out contiguously, low addresses first:
